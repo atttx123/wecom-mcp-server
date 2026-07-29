@@ -1,0 +1,17 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# 本地凭据 (切勿提交)
+.env
+
+# 消息持久化数据 (SQLite + 下载的媒体文件)
+data/
+

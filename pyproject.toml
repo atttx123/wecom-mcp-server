@@ -1,0 +1,33 @@
+[project]
+name = "wecom-mcp-server"
+version = "0.1.0"
+description = "Local MCP Server for WeCom (企业微信) self-built application: send/mass send/receive messages and view contacts"
+requires-python = ">=3.14"
+dependencies = [
+    "mcp>=1.2.0",
+    "httpx>=0.27.0",
+    "pydantic>=2.9.0",
+    "pydantic-settings>=2.6.0",
+    "python-dotenv>=1.0.1",
+    "anyio>=4.6.0",
+    # HTTP/SSE MCP transport 需要 uvicorn + starlette (mcp SDK 已传递依赖，
+    # 此处显式声明以便用户清楚 streamable-http 模式所需)
+    "uvicorn>=0.30.0",
+    "starlette>=0.37.0",
+]
+
+[project.scripts]
+wecom-mcp-server = "wecom_mcp_server.server:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/wecom_mcp_server"]
+
+[tool.uv]
+# mcp SDK 依赖 pyjwt[crypto] -> cryptography。在最新 Python (3.14) + macOS x86_64 上
+# cryptography 没有预编译 wheel 且本机无 Rust，会构建失败。本服务的回调解密使用
+# 内置纯 Python AES 实现，不需要 cryptography，因此把 pyjwt[crypto] 降级为 pyjwt。
+override-dependencies = ["pyjwt>=2.10.0"]

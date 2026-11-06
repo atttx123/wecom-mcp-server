@@ -35,8 +35,7 @@ async def run() -> int:
             print(f"[2] tools/list  -> {len(tools.tools)} 个工具 (stdio 模式不注册 HTTP-only 工具)")
 
             for name, args in (
-                ("check_config", {}),
-                ("analyze_approval_records", {"limit": 5}),
+                ("search_approval_records", {"with_stats": True}),
                 ("list_approval_templates", {}),
             ):
                 res = await session.call_tool(name, args)

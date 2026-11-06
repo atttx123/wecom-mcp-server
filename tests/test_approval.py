@@ -509,14 +509,16 @@ def test_mcp_tools_end_to_end() -> None:
             assert data["analysis"]["overview"]["total"] == 3
             assert data["analysis"]["by_template"][0]["template_name"] == "费用报销"
 
-            # 分析工具 (本地库)
-            analysis = json.loads(await server.analyze_approval_records())
-            assert analysis["data"]["matched"] == 3
-            assert analysis["data"]["local_total"] == 3
-
-            # 检索工具
+            # 检索 + 统计合并工具 (with_stats 开关)
             found = json.loads(await server.search_approval_records(keyword="差旅"))
             assert found["data"]["count"] == 3
+            assert "analysis" not in found["data"]
+
+            stats = json.loads(await server.search_approval_records(keyword="差旅", with_stats=True))
+            assert stats["data"]["matched"] == 3
+            assert stats["data"]["local_total"] == 3
+            assert stats["data"]["analysis"]["overview"]["total"] == 3
+            assert stats["data"]["local_range"]["start"] != ""
 
             # 模板列表
             templates = json.loads(await server.list_approval_templates())
@@ -585,6 +587,83 @@ def test_department_filter_includes_sub_departments() -> None:
         server._approval_collector = None  # type: ignore[assignment]
         server._contacts = None  # type: ignore[assignment]
         approval_storage._db = None
+
+
+def test_send_message_unified_entry() -> None:
+    """send_message 统一出口: 文本容错、媒体自动上传、@all 群发同走此入口。"""
+    import asyncio
+    import os
+
+    from wecom_mcp_server import server
+    from wecom_mcp_server.config import get_settings
+
+    class FakeSendClient:
+        def __init__(self) -> None:
+            self.sent: list[dict] = []
+            self.uploaded: list[tuple[str, str]] = []
+
+        async def send_message(self, *, to_user=None, to_party=None, to_tag=None,
+                               msg_type="text", content=None, agent_id=None):
+            self.sent.append({
+                "to_user": to_user, "msg_type": msg_type, "content": content,
+            })
+            return {"errcode": 0, "msgid": "MSG_1"}
+
+        async def upload_media(self, file_path, media_type="file"):
+            self.uploaded.append((file_path, media_type))
+            return {"errcode": 0, "media_id": "MEDIA_1"}
+
+    with tempfile.TemporaryDirectory() as tmp:
+        os.environ["WECOM_CORP_ID"] = "ww_test"
+        os.environ["WECOM_CORP_SECRET"] = "secret"
+        os.environ["WECOM_DATA_DIR"] = tmp
+        get_settings.cache_clear()
+
+        client = FakeSendClient()
+        server._client = client  # type: ignore[assignment]
+
+        async def run():
+            # 1) 文本直接写
+            r = json.loads(await server.send_message(
+                to_user="u1", msg_type="text", content="你好"))
+            assert r["ok"] is True
+            assert client.sent[-1]["content"] == {"content": "你好"}
+
+            # 2) 误写成 JSON 也要能容错取出 content
+            r = json.loads(await server.send_message(
+                to_user="u1", msg_type="text", content='{"content": "你好2"}'))
+            assert r["ok"] is True
+            assert client.sent[-1]["content"] == {"content": "你好2"}
+
+            # 3) 媒体类型 + file_path -> 自动上传换 media_id
+            path = Path(tmp) / "pic.png"
+            path.write_bytes(b"\x89PNG fake")
+            r = json.loads(await server.send_message(
+                to_user="u1", msg_type="image", file_path=str(path)))
+            assert r["ok"] is True
+            assert client.uploaded[-1] == (str(path), "image")
+            assert client.sent[-1]["content"] == {"media_id": "MEDIA_1"}
+
+            # 4) 群发 @all 走同一个出口
+            r = json.loads(await server.send_message(
+                to_user="@all", msg_type="markdown", content="# 通知"))
+            assert r["ok"] is True
+            assert client.sent[-1]["to_user"] == "@all"
+            assert client.sent[-1]["msg_type"] == "markdown"
+
+            # 5) 文件不存在应明确报错
+            r = json.loads(await server.send_message(
+                to_user="u1", msg_type="file", file_path=str(Path(tmp) / "nope.png")))
+            assert r["ok"] is False
+
+            # 6) 未指定接收人应报错
+            r = json.loads(await server.send_message(msg_type="text", content="x"))
+            assert r["ok"] is False
+
+        asyncio.run(run())
+
+        get_settings.cache_clear()
+        server._client = None  # type: ignore[assignment]
 
 
 def test_contacts_token_fallback_and_department_degrade() -> None:

@@ -28,14 +28,14 @@ from mcp.client.streamable_http import streamablehttp_client
 #   "any"     -> 不做断言, 仅确认协议层有响应
 CASES: list[tuple[str, dict[str, Any], str]] = [
     # ---- 纯本地/配置类, 无需任何凭据即可通过 ----
-    ("check_config", {}, "ok"),
     ("health_check", {}, "ok"),
-    ("list_message_years", {}, "ok"),
+    ("health_check", {"include_config": True}, "ok"),
     ("get_message_stats", {}, "ok"),
+    ("get_message_stats", {"include_years": True}, "ok"),
     ("search_history_messages", {"keyword": "__probe_no_match__", "limit": 5}, "ok"),
     # ---- 审批: 本地库能力 (无凭据也能跑通) ----
-    ("analyze_approval_records", {"limit": 10}, "ok"),
     ("search_approval_records", {"keyword": "__probe_no_match__"}, "ok"),
+    ("search_approval_records", {"keyword": "__probe_no_match__", "with_stats": True}, "ok"),
     # ---- 审批: 需要真实企业微信凭据 + 后台授权 ----
     ("list_approval_templates", {}, "need_auth"),
     ("export_approval_records", {"start_date": "2026-10-01", "end_date": "2026-10-31"}, "need_auth"),

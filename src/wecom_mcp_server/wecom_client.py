@@ -198,13 +198,6 @@ class WeComClient:
             msg_type="markdown", content={"content": content}, agent_id=agent_id,
         )
 
-    async def mass_send_text(self, text: str, *, agent_id=None) -> dict[str, Any]:
-        """群发文本给可见范围全部成员 (touser=@all)。"""
-        return await self.send_message(
-            to_user="@all", msg_type="text",
-            content={"content": text}, agent_id=agent_id,
-        )
-
     # ------------------------------------------------------------------ #
     # 通讯录 (优先使用 contacts_secret)
     # ------------------------------------------------------------------ #

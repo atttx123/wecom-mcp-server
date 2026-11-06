@@ -33,12 +33,9 @@ Provides a standard set of MCP tools that enable AI Agents (e.g., Trae Work, Cla
 | :--- | :--- |
 | `send_text_message` | Send a text message |
 | `send_markdown_message` | Send a Markdown message |
-| `send_message` | Send any type of message (text/markdown/news, etc.) |
-| `send_file_message` | Send a local file (auto-upload) |
-| `mass_send_message` | Mass message all members in the app's visible scope (`@all`) |
+| `send_message` | Send any message type; with `msg_type` image/voice/video/file it auto-uploads `file_path`; `to_user="@all"` mass-messages everyone in the app's visible scope |
 | `lookup_user_id` | Find UserID by member name |
 | `list_users_by_department` | List all members in a department (including sub-departments) |
-| `check_config` | Check current WeCom configuration status |
 
 ### Approval Tools (Universal — Stdio & HTTP/SSE)
 
@@ -47,10 +44,9 @@ Backed by the "Workbench - Approval" open APIs. The accessible data range is det
 | Tool Name | Description |
 | :--- | :--- |
 | `export_approval_records` | Export approval submission records by filters (CSV / XLSX / JSON) with statistics |
-| `analyze_approval_records` | Analyze exported records (template / status / applicant / duration / amount) |
 | `get_approval_detail` | Get one approval record (form content, approval flow, comments) |
 | `list_approval_templates` | List approval templates and their control schema |
-| `search_approval_records` | Search form content across exported records |
+| `search_approval_records` | Search form content across exported records; add `with_stats=True` for grouped statistics |
 
 > `department_id` filters by **department subtree**: the WeCom server-side `department` filter already includes child departments, and the local second-pass filter matches the same way, so passing a parent department never drops its children's records.
 
@@ -58,12 +54,10 @@ Backed by the "Workbench - Approval" open APIs. The accessible data range is det
 
 | Tool Name | Description |
 | :--- | :--- |
-| `health_check` | Health check (Webhook status, database status, etc.) |
+| `health_check` | Health check (Webhook status, database status, etc.); add `include_config=True` for a config summary |
 | `search_history_messages` | Query historical messages (filter by time/type/sender/keywords) |
-| `get_message_detail` | Get details of a single message |
-| `get_message_file` | Get the local file path associated with a message |
-| `list_message_years` | List years that have historical data |
-| `get_message_stats` | Historical message statistics (by type/sender/month) |
+| `get_message_detail` | Get details of a single message; add `resolve_file=True` for the local absolute file path |
+| `get_message_stats` | Historical message statistics (by type/sender/month); add `include_years=True` for per-year counts |
 
 ## 🚀 Quick Start
 
@@ -209,7 +203,7 @@ still resolve as long as the applicants are inside the app's visible scope.
 }
 
 // 2) Group statistics over exported data (pass rate, duration, amounts)
-{ "name": "analyze_approval_records", "arguments": { "start_date": "2026-09-01" } }
+{ "name": "search_approval_records", "arguments": { "start_date": "2026-09-01", "with_stats": true } }
 
 // 3) Search approvals whose form content contains a keyword
 { "name": "search_approval_records", "arguments": { "keyword": "travel" } }

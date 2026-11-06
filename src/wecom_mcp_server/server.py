@@ -41,6 +41,9 @@ _webhook: WebhookReceiver | None = None
 _approval_collector: ApprovalCollector | None = None
 _contacts: ContactResolver | None = None
 
+#: 需要 media_id 的消息类型（配合 file_path 自动上传）
+_MEDIA_MSG_TYPES = ("image", "voice", "video", "file")
+
 
 def _settings() -> Settings:
     return get_settings()
@@ -166,87 +169,80 @@ async def send_markdown_message(
 @mcp.tool()
 async def send_message(
     to_user: str = "", to_party: str = "", to_tag: str = "",
-    msg_type: str = "text", content_json: str = "", agent_id: int = 0,
+    msg_type: str = "text", content: str = "", file_path: str = "",
+    agent_id: int = 0,
 ) -> str:
-    """发送任意类型应用消息 (通用接口)。
+    """发送任意类型应用消息 (统一出口)。
 
     Args:
-        msg_type: text/markdown/textcard/news/image/mpnews/template_card 等
-        content_json: 对应 msg_type 的内容体 JSON。
-            text: {"content":"文本"}  markdown: {"content":"# 标题"}
-            textcard: {"title":"标题","description":"描述","url":"https://..."}
+        to_user: 接收人 userid，多人用 "|" 分隔；填 "@all" 表示群发给应用可见范围内的全部成员
+        to_party: 接收部门 id，多个用 "|" 分隔
+        to_tag: 接收标签 id，多个用 "|" 分隔
+        msg_type: text/markdown/textcard/news/image/voice/video/file/mpnews/template_card 等
+        content: 消息体。
+            - text / markdown：直接写文本，例如 "# 标题"；
+            - textcard / news / template_card 等：写 JSON，例如
+              {"title":"标题","description":"描述","url":"https://..."}；
+            - image / voice / video / file：一般留空，改用 file_path 自动上传。
+        file_path: 本地文件路径。msg_type 为 image/voice/video/file 时，
+            会自动上传到企业微信取得 media_id 后发送（文件不超过 20MB）。
         agent_id: 应用 AgentId，留空使用默认配置
     """
     if not _settings().is_configured:
         return _config_status()
     if not any([to_user, to_party, to_tag]):
         return _err("to_user / to_party / to_tag 至少指定一个")
-    try:
-        body = json.loads(content_json) if content_json else {}
-    except json.JSONDecodeError as e:
-        return _err(f"content_json 不是合法 JSON: {e}")
-    try:
-        data = await _get_client().send_message(
-            to_user=to_user or None, to_party=to_party or None, to_tag=to_tag or None,
-            msg_type=msg_type, content=body, agent_id=agent_id or None,
-        )
-        return _ok(data, note=f"{msg_type} 消息发送结果")
-    except WeComError as e:
-        return _err(str(e), detail=e.raw)
-    except Exception as e:  # noqa: BLE001
-        return _err(f"请求失败: {e}")
+    kind = (msg_type or "text").strip().lower()
 
-
-@mcp.tool()
-async def send_file_message(
-    file_path: str, to_user: str = "", to_party: str = "", to_tag: str = "",
-    agent_id: int = 0,
-) -> str:
-    """发送文件给企业微信成员 (自动上传文件并发送)。
-
-    限制: 文件不超过 20MB。media_id 仅 3 天内有效。
-    """
-    if not _settings().is_configured:
-        return _config_status()
-    if not any([to_user, to_party, to_tag]):
-        return _err("to_user / to_party / to_tag 至少指定一个")
-    if not os.path.isfile(file_path):
-        return _err(f"文件不存在: {file_path}")
-    try:
-        upload = await _get_client().upload_media(file_path, media_type="file")
-        media_id = upload.get("media_id", "")
-        if not media_id:
-            return _err("上传成功但未获取到 media_id", detail=upload)
-        data = await _get_client().send_message(
-            to_user=to_user or None, to_party=to_party or None, to_tag=to_tag or None,
-            msg_type="file", content={"media_id": media_id}, agent_id=agent_id or None,
-        )
-        size = os.path.getsize(file_path)
-        return _ok(data, note=f"文件发送成功: {os.path.basename(file_path)} ({size} bytes)")
-    except WeComError as e:
-        return _err(str(e), detail=e.raw)
-    except Exception as e:  # noqa: BLE001
-        return _err(f"请求失败: {e}")
-
-
-@mcp.tool()
-async def mass_send_message(content: str, msg_type: str = "text", agent_id: int = 0) -> str:
-    """群发消息给应用可见范围内的全部成员 (touser=@all)。
-
-    注意: @all 仅覆盖应用可见范围，不是企业全部成员。
-    如需发给全企业，请把应用可见范围设为根部门。
-    """
-    if not _settings().is_configured:
-        return _config_status()
-    try:
-        if msg_type == "markdown":
-            data = await _get_client().send_message(
-                to_user="@all", msg_type="markdown",
-                content={"content": content}, agent_id=agent_id or None,
-            )
+    # ---- 媒体类: 给了 file_path 就先上传拿 media_id ----
+    if kind in _MEDIA_MSG_TYPES:
+        if file_path:
+            if not os.path.isfile(file_path):
+                return _err(f"文件不存在: {file_path}")
+            try:
+                upload = await _get_client().upload_media(file_path, media_type=kind)
+            except WeComError as e:
+                return _err(str(e), detail=e.raw)
+            except Exception as e:  # noqa: BLE001
+                return _err(f"媒体上传失败: {e}")
+            media_id = upload.get("media_id", "")
+            if not media_id:
+                return _err("上传成功但未获取到 media_id", detail=upload)
+            body: dict[str, Any] = {"media_id": media_id}
+            note = f"{kind} 消息发送结果 (自动上传 {os.path.basename(file_path)})"
         else:
-            data = await _get_client().mass_send_text(content, agent_id=agent_id or None)
-        return _ok(data, note="群发 (@all) 结果")
+            # 未给文件时，允许直接传带 media_id 的 JSON
+            try:
+                body = json.loads(content) if content else {}
+            except json.JSONDecodeError as e:
+                return _err(f"content 不是合法 JSON: {e}")
+            note = f"{kind} 消息发送结果"
+    elif kind in ("text", "markdown"):
+        # 纯文本类型：容错——有人会写成 {"content": "..."} 的 JSON
+        text = content
+        stripped = content.strip()
+        if stripped.startswith("{"):
+            try:
+                parsed = json.loads(stripped)
+            except json.JSONDecodeError:
+                parsed = None
+            if isinstance(parsed, dict) and isinstance(parsed.get("content"), str):
+                text = parsed["content"]
+        body = {"content": text}
+        note = f"{kind} 消息发送结果"
+    else:
+        try:
+            body = json.loads(content) if content else {}
+        except json.JSONDecodeError as e:
+            return _err(f"content 不是合法 JSON: {e}")
+        note = f"{kind} 消息发送结果"
+
+    try:
+        data = await _get_client().send_message(
+            to_user=to_user or None, to_party=to_party or None, to_tag=to_tag or None,
+            msg_type=kind, content=body, agent_id=agent_id or None,
+        )
+        return _ok(data, note=note)
     except WeComError as e:
         return _err(str(e), detail=e.raw)
     except Exception as e:  # noqa: BLE001
@@ -637,69 +633,6 @@ async def export_approval_records(
 
 
 @mcp.tool()
-async def analyze_approval_records(
-    start_date: str = "",
-    end_date: str = "",
-    template_id: str = "",
-    template_name: str = "",
-    applicant: str = "",
-    sp_status: str = "",
-    keyword: str = "",
-    limit: int = 0,
-) -> str:
-    """分析本地已导出的审批记录（按模板 / 状态 / 申请人 / 时长 / 金额分组）。
-
-    仅统计本地库中已通过 export_approval_records 拉取到的数据。
-
-    Args:
-        start_date: 提交时间起点 (YYYY-MM-DD 或时间戳)，留空表示不限
-        end_date: 提交时间终点，留空表示不限
-        template_id: 模板 ID，多个用 "," 分隔
-        template_name: 模板名称关键字
-        applicant: 申请人 userid 或姓名
-        sp_status: 审批状态，多个用 "," 分隔
-        keyword: 表单内容关键字
-        limit: 最多参与统计的记录数，0 表示全部
-    """
-    db = get_approval_db(_settings())
-    start_ts, end_ts = _resolve_range(start_date, end_date) if (start_date or end_date) else (0, 0)
-    template_ids = _split_multi(template_id)
-    if template_name:
-        template_ids.extend(t for t in db.template_ids_by_name(template_name) if t not in template_ids)
-    statuses = parse_status_filter(sp_status)
-    records = db.query(
-        start_time=start_ts,
-        end_time=end_ts,
-        template_ids=template_ids or None,
-        template_name=template_name if template_ids else "",
-        applicant=applicant,
-        sp_status=statuses or None,
-        keyword=keyword,
-        limit=int(limit or 0),
-    )
-    analysis = analyze_records(records)
-    local_lo, local_hi = db.time_range()
-    return _ok({
-        "scope": {
-            "start": fmt_ts(start_ts) if start_ts else "不限",
-            "end": fmt_ts(end_ts) if end_ts else "不限",
-            "template_ids": template_ids,
-            "template_name": template_name,
-            "applicant": applicant,
-            "sp_status": statuses,
-            "keyword": keyword,
-        },
-        "local_total": db.count(),
-        "local_range": {
-            "start": fmt_ts(local_lo),
-            "end": fmt_ts(local_hi),
-        },
-        "matched": len(records),
-        "analysis": analysis,
-    }, note="审批记录分析结果")
-
-
-@mcp.tool()
 async def get_approval_detail(sp_no: str, refresh: bool = False) -> str:
     """获取单条审批单的完整详情（表单内容、审批流程、备注）。
 
@@ -818,50 +751,94 @@ async def list_approval_templates(
 async def search_approval_records(
     keyword: str = "",
     template_name: str = "",
+    template_id: str = "",
     applicant: str = "",
     sp_status: str = "",
     start_date: str = "",
     end_date: str = "",
     limit: int = 30,
     offset: int = 0,
+    with_stats: bool = False,
 ) -> str:
-    """在本地已导出的审批记录中检索表单内容。
+    """在本地已导出的审批记录中检索表单内容，并可按需附带统计分析。
+
+    仅检索本地库中已通过 export_approval_records 拉取到的数据。
 
     Args:
         keyword: 表单内容 / 模板名 / 申请人 / 单号关键字
         template_name: 模板名称关键字
+        template_id: 模板 ID，多个用 "," 分隔
         applicant: 申请人 userid 或姓名
         sp_status: 审批状态，多个用 "," 分隔
-        start_date: 提交时间起点
-        end_date: 提交时间终点
-        limit: 返回条数上限
+        start_date: 提交时间起点 (YYYY-MM-DD 或时间戳)，留空表示不限
+        end_date: 提交时间终点，留空表示不限
+        limit: 返回明细条数上限（分页用），不影响统计范围
         offset: 分页偏移
+        with_stats: 为 True 时额外返回分组统计（模板 / 状态 / 申请人 / 时长 / 金额），
+            统计范围为全部匹配记录，与 limit 无关
     """
     db = get_approval_db(_settings())
     start_ts, end_ts = _resolve_range(start_date, end_date) if (start_date or end_date) else (0, 0)
     statuses = parse_status_filter(sp_status)
-    records = db.query(
-        start_time=start_ts,
-        end_time=end_ts,
-        template_name=template_name,
-        applicant=applicant,
-        sp_status=statuses or None,
-        keyword=keyword,
-        limit=int(limit),
-        offset=int(offset),
-    )
-    return _ok({
+    template_ids = _split_multi(template_id)
+    if template_name:
+        template_ids.extend(t for t in db.template_ids_by_name(template_name) if t not in template_ids)
+
+    def _query(limit_: int, offset_: int) -> list[dict[str, Any]]:
+        return db.query(
+            start_time=start_ts,
+            end_time=end_ts,
+            template_ids=template_ids or None,
+            template_name=template_name if template_ids else "",
+            applicant=applicant,
+            sp_status=statuses or None,
+            keyword=keyword,
+            limit=limit_,
+            offset=offset_,
+        )
+
+    records = _query(int(limit), int(offset))
+    payload: dict[str, Any] = {
         "records": [_record_brief(r) for r in records],
         "count": len(records),
         "local_total": db.count(),
-    }, note="本地审批记录检索结果")
+    }
+    if with_stats:
+        # 统计覆盖全部匹配记录，不受分页影响
+        all_records = _query(0, 0)
+        local_lo, local_hi = db.time_range()
+        payload["matched"] = len(all_records)
+        payload["local_range"] = {"start": fmt_ts(local_lo), "end": fmt_ts(local_hi)}
+        payload["analysis"] = analyze_records(all_records)
+    return _ok(payload, note="本地审批记录检索结果")
 
 
 # ====================================================================== #
 # 历史查询 + 健康检查 (仅 HTTP/SSE 模式, 在 main() 中动态注册)
 # ====================================================================== #
-async def health_check() -> str:
-    """健康检查: webhook 运行状态、回调配置、数据库状态。"""
+def _config_payload() -> dict[str, Any]:
+    """当前 WeCom 配置摘要 (不含明文密钥)。"""
+    s = _settings()
+    return {
+        "configured": s.is_configured,
+        "corp_id": s.corp_id or "(未设置)",
+        "agent_id": s.agent_id or "(未设置)",
+        "corp_secret": "***" if s.corp_secret else "(未设置)",
+        "contacts_secret_configured": s.has_contacts_secret,
+        "callback_configured": bool(s.callback_token and s.callback_encoding_aes_key),
+        "api_base": s.api_base,
+        "webhook_port": s.webhook_port,
+        "mcp_transport": s.mcp_transport,
+        "data_dir": s.data_dir,
+    }
+
+
+async def health_check(include_config: bool = False) -> str:
+    """健康检查: webhook 运行状态、回调配置、数据库状态。
+
+    Args:
+        include_config: 为 True 时附带当前配置摘要 (CorpID / AgentId / 端口 / 数据目录等)
+    """
     wh = _get_webhook()
     s = _settings()
     db = get_message_db()
@@ -870,7 +847,7 @@ async def health_check() -> str:
         db_years = [y["year"] for y in db.list_years()]
     except Exception:  # noqa: BLE001
         db_ok = False
-    return _ok({
+    payload: dict[str, Any] = {
         "status": "ok" if wh.running else "degraded",
         "webhook_running": wh.running,
         "webhook_listen": wh.describe(),
@@ -878,7 +855,10 @@ async def health_check() -> str:
         "callback_configured": bool(s.callback_token and s.callback_encoding_aes_key),
         "db_ok": db_ok,
         "db_years": db_years,
-    }, note="webhook=运行中/未运行, db=数据库可读性")
+    }
+    if include_config:
+        payload["config"] = _config_payload()
+    return _ok(payload, note="webhook=运行中/未运行, db=数据库可读性")
 
 
 async def search_history_messages(
@@ -904,30 +884,14 @@ async def search_history_messages(
     return _ok({"messages": rows, "count": len(rows)}, note="历史消息查询结果 (按时间倒序)")
 
 
-async def get_message_detail(msg_id: str, year: int = 0) -> str:
+async def get_message_detail(msg_id: str, year: int = 0, resolve_file: bool = False) -> str:
     """获取单条历史消息详情 (含文件信息)。
 
     Args:
         msg_id: 消息 ID
         year: 消息年份；0=自动查找
-    """
-    db = get_message_db()
-    if year == 0:
-        for y in db.list_years():
-            row = db.get_message_by_id(y["year"], msg_id)
-            if row:
-                return _ok(row, note="消息详情")
-        return _err(f"未找到 msg_id={msg_id} 的消息")
-    row = db.get_message_by_id(year, msg_id)
-    return _ok(row, note="消息详情") if row else _err(f"未找到 msg_id={msg_id} (year={year})")
-
-
-async def get_message_file(msg_id: str, year: int = 0) -> str:
-    """获取消息关联的文件本地路径。
-
-    Args:
-        msg_id: 消息 ID
-        year: 消息年份；0=自动查找
+        resolve_file: 为 True 时额外返回文件本地绝对路径与文件元信息
+            (文件名 / 大小 / MD5 / 状态 / 扩展名)
     """
     db = get_message_db()
     row = None
@@ -940,41 +904,52 @@ async def get_message_file(msg_id: str, year: int = 0) -> str:
         row = db.get_message_by_id(year, msg_id)
     if not row:
         return _err(f"未找到 msg_id={msg_id} 的消息")
-    if not row.get("file_path"):
-        return _err("该消息无关联文件", detail={"msg_type": row.get("msg_type"), "file_status": row.get("file_status")})
-    return _ok({
-        "msg_id": msg_id,
-        "file_name": row.get("file_name"),
-        "file_path": str(db.abs_path(row["file_path"])),
-        "file_size": row.get("file_size"),
-        "file_md5": row.get("file_md5"),
-        "file_status": row.get("file_status"),
-        "file_ext": row.get("file_ext"),
-    }, note="文件本地路径")
+    if resolve_file:
+        if not row.get("file_path"):
+            row["file"] = {
+                "file_name": row.get("file_name"),
+                "file_path": None,
+                "file_size": row.get("file_size"),
+                "file_md5": row.get("file_md5"),
+                "file_status": row.get("file_status"),
+                "file_ext": row.get("file_ext"),
+                "note": "该消息无关联文件",
+            }
+        else:
+            row["file"] = {
+                "file_name": row.get("file_name"),
+                "file_path": str(db.abs_path(row["file_path"])),
+                "file_size": row.get("file_size"),
+                "file_md5": row.get("file_md5"),
+                "file_status": row.get("file_status"),
+                "file_ext": row.get("file_ext"),
+            }
+    return _ok(row, note="消息详情")
 
 
-async def list_message_years() -> str:
-    """列出有历史消息数据的年份及各年消息数。"""
-    db = get_message_db()
-    years = db.list_years()
-    return _ok({"years": years, "total_years": len(years)}, note="有数据的年份列表")
-
-
-async def get_message_stats(start_time: int = 0, end_time: int = 0) -> str:
+async def get_message_stats(
+    start_time: int = 0, end_time: int = 0, include_years: bool = False
+) -> str:
     """统计历史消息 (按类型/发送人/月份)。
 
     Args:
         start_time: 起始时间 (unix 时间戳, 0=不限)
         end_time: 结束时间 (unix 时间戳, 0=当前时间)
+        include_years: 为 True 时附带各年份的消息条数清单
     """
     db = get_message_db()
-    return _ok(db.get_stats(start_time=start_time, end_time=end_time), note="消息统计")
+    payload: dict[str, Any] = db.get_stats(start_time=start_time, end_time=end_time)
+    if include_years:
+        years = db.list_years()
+        payload["years"] = years
+        payload["total_years"] = len(years)
+    return _ok(payload, note="消息统计")
 
 
 def _register_http_tools() -> None:
     """注册仅 HTTP/SSE 模式可用的工具。"""
     for tool in (health_check, search_history_messages, get_message_detail,
-                 get_message_file, list_message_years, get_message_stats):
+                 get_message_stats):
         mcp.add_tool(tool)
 
 
@@ -991,24 +966,6 @@ def _autostart_webhook() -> None:
         print(f"[wecom-mcp-server] webhook 已启动: {wh.describe()}", file=sys.stderr)
     except Exception as e:  # noqa: BLE001
         print(f"[wecom-mcp-server] webhook 启动失败: {e}", file=sys.stderr)
-
-
-@mcp.tool()
-async def check_config() -> str:
-    """检查当前 WeCom 配置是否就绪 (不发起网络请求)。"""
-    s = _settings()
-    return _ok({
-        "configured": s.is_configured,
-        "corp_id": s.corp_id or "(未设置)",
-        "agent_id": s.agent_id or "(未设置)",
-        "corp_secret": "***" if s.corp_secret else "(未设置)",
-        "contacts_secret_configured": s.has_contacts_secret,
-        "callback_configured": bool(s.callback_token and s.callback_encoding_aes_key),
-        "api_base": s.api_base,
-        "webhook_port": s.webhook_port,
-        "mcp_transport": s.mcp_transport,
-        "data_dir": s.data_dir,
-    }, note="配置自检结果")
 
 
 def main() -> None:

@@ -33,12 +33,9 @@
 | :--- | :--- |
 | `send_text_message` | 发送文本消息 |
 | `send_markdown_message` | 发送 Markdown 消息 |
-| `send_message` | 发送任意类型消息 (text/markdown/news 等) |
-| `send_file_message` | 发送本地文件 (自动上传) |
-| `mass_send_message` | 向应用可见范围**@所有人**群发消息 |
+| `send_message` | 发送任意类型消息；`msg_type` 为 image/voice/video/file 时给 `file_path` 会自动上传；`to_user="@all"` 即群发应用可见范围全部成员 |
 | `lookup_user_id` | 通过成员姓名查找 UserID |
 | `list_users_by_department` | 列出指定部门（含子部门）下的所有成员 |
-| `check_config` | 检查当前 WeCom 配置状态 |
 
 ### 审批工具（通用，Stdio & HTTP/SSE 模式均可用）
 
@@ -47,10 +44,9 @@
 | 工具名称 | 描述 |
 | :--- | :--- |
 | `export_approval_records` | 按条件导出审批提交记录（CSV / XLSX / JSON），同时返回统计分析 |
-| `analyze_approval_records` | 分析本地已导出的审批记录（模板 / 状态 / 申请人 / 时长 / 金额） |
 | `get_approval_detail` | 获取单条审批单详情（表单内容、审批流程、备注） |
 | `list_approval_templates` | 列出审批模板及控件结构，用于确定筛选条件 |
-| `search_approval_records` | 在本地已导出的审批记录中检索表单内容 |
+| `search_approval_records` | 在本地已导出的审批记录中检索表单内容；加 `with_stats=True` 附带分组统计 |
 
 > `department_id` 按**部门子树**筛选：企业微信服务端的 `department` 过滤本身即包含子部门，本地二次筛选也按子树判断，因此传父部门不会漏掉子部门的审批单。
 
@@ -58,12 +54,10 @@
 
 | 工具名称 | 描述 |
 | :--- | :--- |
-| `health_check` | 健康检查 (Webhook 状态、数据库状态等) |
+| `health_check` | 健康检查 (Webhook 状态、数据库状态等)；加 `include_config=True` 附带配置摘要 |
 | `search_history_messages` | 查询历史消息 (支持时间/类型/发送人/关键词过滤) |
-| `get_message_detail` | 获取单条消息详情 |
-| `get_message_file` | 获取消息关联的本地文件路径 |
-| `list_message_years` | 列出有历史数据的年份 |
-| `get_message_stats` | 历史消息统计 (按类型/人/月份) |
+| `get_message_detail` | 获取单条消息详情；加 `resolve_file=True` 附带文件本地绝对路径 |
+| `get_message_stats` | 历史消息统计 (按类型/人/月份)；加 `include_years=True` 附带各年份条数 |
 
 ## 🚀 快速开始
 
@@ -203,7 +197,7 @@ curl -X POST http://localhost:8101/mcp \
 }
 
 // 2) 对已导出数据做分组分析（模板通过率、平均时长、金额汇总）
-{ "name": "analyze_approval_records", "arguments": { "start_date": "2026-09-01" } }
+{ "name": "search_approval_records", "arguments": { "start_date": "2026-09-01", "with_stats": true } }
 
 // 3) 检索表单内容中包含关键词的审批单
 { "name": "search_approval_records", "arguments": { "keyword": "差旅" } }

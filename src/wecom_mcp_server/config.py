@@ -22,13 +22,21 @@ class Settings(BaseSettings):
     callback_encoding_aes_key: str = ""
     # API 网关
     api_base: str = "https://qyapi.weixin.qq.com"
+    # 出网策略: True=遵循 HTTP_PROXY/HTTPS_PROXY 环境变量; False=忽略代理直连。
+    # 常驻守护进程 (supervisord/systemd/docker) 建议设为 False——守护进程继承的
+    # 代理环境通常来自其启动时刻的临时会话, 会随会话销毁而失效。
+    api_trust_env: bool = True
     webhook_port: int = 9876
     # MCP transport: stdio | streamable-http | sse
     mcp_transport: str = "stdio"
     mcp_host: str = "127.0.0.1"
-    mcp_port: int = 8000
+    mcp_port: int = 8101
     # 消息持久化根目录（仅 HTTP 模式生效）
     data_dir: str = "data"
+    # 审批详情拉取并发数。
+    # 注意：企业微信对「同一企业 + 同一接口」做**全局**并发限制 (errcode 45033)，
+    # 且该额度由常驻服务与本进程共享，调大反而会触发 45033 导致数据静默缺失。
+    approval_concurrency: int = 4
 
     @property
     def is_configured(self) -> bool:

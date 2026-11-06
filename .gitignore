@@ -8,6 +8,7 @@ wheels/
 
 # Virtual environments
 .venv
+.workbuddy/
 
 # 本地凭据 (切勿提交)
 .env

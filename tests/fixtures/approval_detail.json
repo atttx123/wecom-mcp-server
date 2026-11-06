@@ -1,0 +1,175 @@
+{
+  "errcode": 0,
+  "errmsg": "ok",
+  "info": {
+    "sp_no": "202609060001",
+    "sp_name": "费用报销",
+    "sp_status": 2,
+    "template_id": "TMPL_REIMBURSE_001",
+    "apply_time": 1757126400,
+    "applyer": { "userid": "zhangsan", "partyid": "12" },
+    "sp_record": [
+      {
+        "sp_status": 1,
+        "approverattr": 1,
+        "details": [
+          {
+            "approver": { "userid": "lisi" },
+            "speech": "同意",
+            "sp_status": 2,
+            "sptime": 1757130000,
+            "media_id": []
+          }
+        ]
+      },
+      {
+        "sp_status": 1,
+        "approverattr": 2,
+        "details": [
+          {
+            "approver": { "userid": "wangwu" },
+            "speech": "金额符合标准，同意",
+            "sp_status": 2,
+            "sptime": 1757212800,
+            "media_id": ["MEDIA_ID_1"]
+          },
+          {
+            "approver": { "userid": "zhaoliu" },
+            "speech": "同意",
+            "sp_status": 2,
+            "sptime": 1757216400,
+            "media_id": []
+          }
+        ]
+      }
+    ],
+    "notifyer": [{ "userid": "qianqi" }],
+    "apply_data": {
+      "contents": [
+        {
+          "control": "Text",
+          "id": "Text-15111111111",
+          "title": [{ "text": "报销事由", "lang": "zh_CN" }],
+          "value": { "text": "客户现场差旅" }
+        },
+        {
+          "control": "Textarea",
+          "id": "Textarea-15111111112",
+          "title": [{ "text": "费用说明", "lang": "zh_CN" }],
+          "value": { "text": "含高铁票与住宿费，共 2 晚" }
+        },
+        {
+          "control": "Money",
+          "id": "Money-15111111113",
+          "title": [{ "text": "报销金额", "lang": "zh_CN" }],
+          "value": { "new_money": "1860.50" }
+        },
+        {
+          "control": "Number",
+          "id": "Number-15111111114",
+          "title": [{ "text": "天数", "lang": "zh_CN" }],
+          "value": { "new_number": "3" }
+        },
+        {
+          "control": "Date",
+          "id": "Date-15111111115",
+          "title": [{ "text": "发生日期", "lang": "zh_CN" }],
+          "value": { "date": { "type": "day", "s_timestamp": "1757059200" } }
+        },
+        {
+          "control": "Selector",
+          "id": "Selector-15111111116",
+          "title": [{ "text": "费用类型", "lang": "zh_CN" }],
+          "value": {
+            "selector": {
+              "type": "multi",
+              "options": [
+                { "key": "option-1", "value": [{ "text": "差旅费", "lang": "zh_CN" }] },
+                { "key": "option-2", "value": [{ "text": "住宿费", "lang": "zh_CN" }] }
+              ]
+            }
+          }
+        },
+        {
+          "control": "Contact",
+          "id": "Contact-15111111117",
+          "title": [{ "text": "同行人", "lang": "zh_CN" }],
+          "value": { "members": [{ "userid": "zhangsan", "name": "张三" }] }
+        },
+        {
+          "control": "Contact",
+          "id": "Contact-15111111118",
+          "title": [{ "text": "成本中心", "lang": "zh_CN" }],
+          "value": { "departments": [{ "openapi_id": "12", "name": "销售部" }] }
+        },
+        {
+          "control": "File",
+          "id": "File-15111111119",
+          "title": [{ "text": "发票附件", "lang": "zh_CN" }],
+          "value": {
+            "files": [
+              { "file_id": "WWCISP_aaaabbbbcccc" },
+              { "file_id": "WWCISP_dddeeeeffff" }
+            ]
+          }
+        },
+        {
+          "control": "Table",
+          "id": "Table-15111111120",
+          "title": [{ "text": "费用明细", "lang": "zh_CN" }],
+          "value": {
+            "children": [
+              {
+                "list": [
+                  {
+                    "control": "Text",
+                    "id": "Text-1",
+                    "title": [{ "text": "项目", "lang": "zh_CN" }],
+                    "value": { "text": "高铁票" }
+                  },
+                  {
+                    "control": "Money",
+                    "id": "Money-1",
+                    "title": [{ "text": "小计", "lang": "zh_CN" }],
+                    "value": { "new_money": "1060.50" }
+                  }
+                ]
+              },
+              {
+                "list": [
+                  {
+                    "control": "Text",
+                    "id": "Text-2",
+                    "title": [{ "text": "项目", "lang": "zh_CN" }],
+                    "value": { "text": "住宿费" }
+                  },
+                  {
+                    "control": "Money",
+                    "id": "Money-2",
+                    "title": [{ "text": "小计", "lang": "zh_CN" }],
+                    "value": { "new_money": "800" }
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "control": "Tips",
+          "id": "Tips-15111111121",
+          "title": [{ "text": "填写说明", "lang": "zh_CN" }],
+          "value": {}
+        }
+      ]
+    },
+    "comments": [
+      {
+        "commentUserInfo": { "userid": "lisi" },
+        "commenttime": 1757130100,
+        "commentcontent": "请补充行程单",
+        "commentid": "comment-1",
+        "media_id": []
+      }
+    ]
+  }
+}
